@@ -17,7 +17,6 @@ const emptyFields = () => ({
 // Merge two enrichment results — prefer `a` for scalar fields, union social profiles.
 function merge(a: EnrichResult, b: EnrichResult): EnrichResult {
   const seenNetworks = new Set(a.socialProfiles.map((p) => p.network));
-  const extraProfiles = b.socialProfiles.filter((p) => !seenNetworks.has(p.network));
   const seenPhones = new Set(a.phones);
   const seenEmails = new Set(a.emails);
   return {
@@ -31,15 +30,21 @@ function merge(a: EnrichResult, b: EnrichResult): EnrichResult {
     company: a.company ?? b.company,
     phones: [...a.phones, ...b.phones.filter((p) => !seenPhones.has(p))],
     emails: [...a.emails, ...b.emails.filter((e) => !seenEmails.has(e))],
-    socialProfiles: [...a.socialProfiles, ...extraProfiles],
+    socialProfiles: [
+      ...a.socialProfiles,
+      ...b.socialProfiles.filter((p) => !seenNetworks.has(p.network)),
+    ],
     provider: [a.provider, b.provider].filter(Boolean).join("+"),
     configured: true,
   };
 }
 
-// ── People Data Labs ─────────────────────────────────────────────────────────
+// ── People Data Labs ──────────────────────────────────────────────────────────
 // Free tier: 100 calls/month — app.peopledatalabs.com
-async function viaPDL(params: { email?: string; phone?: string }, key: string): Promise<EnrichResult | null> {
+async function viaPDL(
+  params: { email?: string; phone?: string },
+  key: string
+): Promise<EnrichResult | null> {
   const qs = new URLSearchParams({ pretty: "false" });
   if (params.email) qs.set("email", params.email);
   if (params.phone) qs.set("phone", params.phone);
@@ -63,13 +68,11 @@ async function viaPDL(params: { email?: string; phone?: string }, key: string): 
       username: p.username ?? null,
     }));
 
-    const age = d.birth_year ? new Date().getFullYear() - Number(d.birth_year) : null;
-
     return {
       name: d.full_name ?? null,
       firstName: d.first_name ?? null,
       lastName: d.last_name ?? null,
-      age,
+      age: d.birth_year ? new Date().getFullYear() - Number(d.birth_year) : null,
       birthYear: d.birth_year ? Number(d.birth_year) : null,
       location: d.location_names?.[0] ?? d.location_name ?? null,
       jobTitle: d.job_title ?? null,
@@ -85,51 +88,51 @@ async function viaPDL(params: { email?: string; phone?: string }, key: string): 
   }
 }
 
-// ── FullContact ──────────────────────────────────────────────────────────────
-// Better at personal emails via social graph matching.
-// Free tier available — platform.fullcontact.com
-async function viaFullContact(params: { email?: string; phone?: string }, key: string): Promise<EnrichResult | null> {
-  const body: Record<string, string> = {};
-  if (params.email) body.email = params.email;
-  if (params.phone) body.phone = params.phone;
-
+// ── Hunter.io Email Enrichment ────────────────────────────────────────────────
+// Sign up free at hunter.io (Google login works). 25 enrichments/month free.
+// Only works with email (not phone).
+async function viaHunter(email: string, key: string): Promise<EnrichResult | null> {
   try {
-    const res = await fetch("https://api.fullcontact.com/v3/person.enrich", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      cache: "no-store",
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (res.status === 404 || res.status === 422) return { ...emptyFields(), provider: "fullcontact", configured: true };
+    const res = await fetch(
+      `https://api.hunter.io/v2/email-enrichment?email=${encodeURIComponent(email)}&api_key=${key}`,
+      { cache: "no-store", signal: AbortSignal.timeout(10_000) }
+    );
+    if (res.status === 404) return { ...emptyFields(), provider: "hunter", configured: true };
     if (!res.ok) return null;
 
-    const d: any = await res.json();
+    const body: any = await res.json();
+    const d = body?.data;
+    if (!d) return { ...emptyFields(), provider: "hunter", configured: true };
 
-    const socialProfiles: SocialProfile[] = (d.socialProfiles ?? []).map((p: any) => ({
-      network: (p.type ?? p.network ?? "unknown").toLowerCase(),
-      url: p.url ?? null,
-      username: p.username ?? null,
-    }));
+    const socialProfiles: SocialProfile[] = [];
+    if (d.linkedin_url) {
+      socialProfiles.push({ network: "linkedin", url: d.linkedin_url, username: null });
+    }
+    if (d.twitter) {
+      socialProfiles.push({
+        network: "twitter",
+        url: `https://twitter.com/${d.twitter}`,
+        username: d.twitter,
+      });
+    }
 
-    const currentOrg = (d.organizations ?? []).find((o: any) => o.current) ?? d.organizations?.[0];
+    const firstName = d.first_name ?? null;
+    const lastName = d.last_name ?? null;
+    const fullName = firstName && lastName ? `${firstName} ${lastName}` : firstName ?? lastName ?? null;
 
     return {
-      name: d.fullName ?? null,
-      firstName: d.givenName ?? null,
-      lastName: d.familyName ?? null,
-      age: d.age ?? null,
-      birthYear: d.age ? new Date().getFullYear() - Number(d.age) : null,
-      location: d.location ?? null,
-      jobTitle: currentOrg?.title ?? null,
-      company: currentOrg?.name ?? null,
-      phones: Array.isArray(d.phones) ? d.phones.map((p: any) => p.value ?? p) : [],
-      emails: Array.isArray(d.emails) ? d.emails.map((e: any) => e.value ?? e) : [],
+      name: fullName,
+      firstName,
+      lastName,
+      age: null,
+      birthYear: null,
+      location: d.location ?? d.city ?? null,
+      jobTitle: d.position ?? null,
+      company: d.organization ?? null,
+      phones: d.phone_number ? [d.phone_number] : [],
+      emails: d.email ? [d.email] : [],
       socialProfiles,
-      provider: "fullcontact",
+      provider: "hunter",
       configured: true,
     };
   } catch {
@@ -137,34 +140,37 @@ async function viaFullContact(params: { email?: string; phone?: string }, key: s
   }
 }
 
-// ── Public entry point ───────────────────────────────────────────────────────
-export async function enrichPerson(params: { email?: string; phone?: string }): Promise<EnrichResult> {
+// ── Public entry point ────────────────────────────────────────────────────────
+export async function enrichPerson(params: {
+  email?: string;
+  phone?: string;
+}): Promise<EnrichResult> {
   const pdlKey = process.env.PDL_API_KEY;
-  const fcKey = process.env.FULLCONTACT_API_KEY;
+  const hunterKey = process.env.HUNTER_API_KEY;
 
-  if (!pdlKey && !fcKey) {
+  if (!pdlKey && !hunterKey) {
     return {
       ...emptyFields(),
       provider: "",
       configured: false,
-      error: "Person enrichment not configured. Add PDL_API_KEY or FULLCONTACT_API_KEY to your environment.",
+      error: "Person enrichment not configured. Add PDL_API_KEY or HUNTER_API_KEY to your environment.",
     };
   }
 
-  // Run both providers in parallel for maximum coverage.
-  const [pdlResult, fcResult] = await Promise.all([
+  // Run available providers in parallel.
+  const [pdlResult, hunterResult] = await Promise.all([
     pdlKey ? viaPDL(params, pdlKey) : Promise.resolve(null),
-    fcKey ? viaFullContact(params, fcKey) : Promise.resolve(null),
+    // Hunter only supports email lookups
+    hunterKey && params.email ? viaHunter(params.email, hunterKey) : Promise.resolve(null),
   ]);
 
-  // Merge whichever providers returned data.
-  if (pdlResult && fcResult) return merge(pdlResult, fcResult);
+  if (pdlResult && hunterResult) return merge(pdlResult, hunterResult);
   if (pdlResult) return pdlResult;
-  if (fcResult) return fcResult;
+  if (hunterResult) return hunterResult;
 
   return {
     ...emptyFields(),
-    provider: [pdlKey ? "pdl" : "", fcKey ? "fullcontact" : ""].filter(Boolean).join("+"),
+    provider: [pdlKey ? "pdl" : "", hunterKey ? "hunter" : ""].filter(Boolean).join("+"),
     configured: true,
   };
 }
