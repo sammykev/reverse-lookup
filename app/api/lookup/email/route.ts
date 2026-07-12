@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { lookupEmail } from "@/lib/providers/email";
+import { enrichPerson } from "@/lib/providers/enrich";
 import { isValidEmailFormat } from "@/lib/validate";
 
 export const runtime = "nodejs";
@@ -14,6 +15,9 @@ export async function GET(req: Request) {
   if (!isValidEmailFormat(q)) {
     return NextResponse.json({ error: "That doesn't look like a valid email address." }, { status: 400 });
   }
-  const result = await lookupEmail(q);
-  return NextResponse.json(result);
+  const [validation, enrichment] = await Promise.all([
+    lookupEmail(q),
+    enrichPerson({ email: q }),
+  ]);
+  return NextResponse.json({ ...validation, enrichment });
 }

@@ -27,9 +27,18 @@ export async function lookupEmail(raw: string): Promise<EmailResult> {
 
   try {
     const url = `https://emailvalidation.abstractapi.com/v1/?api_key=${key}&email=${encodeURIComponent(email)}`;
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) {
-      return { ...empty(raw), error: "Email provider request failed." };
+      let detail = `HTTP ${res.status}`;
+      try {
+        const body: any = await res.json();
+        if (body?.error?.message) detail += `: ${body.error.message}`;
+        else if (body?.message) detail += `: ${body.message}`;
+      } catch {}
+      return { ...empty(raw), error: `Email provider error — ${detail}. Check your ABSTRACT_EMAIL_API_KEY in Vercel.` };
     }
     const data: any = await res.json();
     if (!data || data.email === undefined) {
@@ -48,7 +57,8 @@ export async function lookupEmail(raw: string): Promise<EmailResult> {
       autocorrect: data.autocorrect || null,
       provider: "abstract",
     };
-  } catch (err) {
-    return { ...empty(raw), error: "Email provider request failed. Check your API key and network." };
+  } catch (err: any) {
+    const msg = err?.name === "TimeoutError" ? "Request timed out (10s)." : (err?.message || "Unknown error.");
+    return { ...empty(raw), error: `Email provider request failed — ${msg}` };
   }
 }
