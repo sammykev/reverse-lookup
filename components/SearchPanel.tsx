@@ -3,18 +3,20 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Loader2 } from "lucide-react";
-import { LookupKind, PhoneResult, EmailResult, PeopleResult } from "@/lib/types";
+import { LookupKind, PhoneResult, EmailResult, PeopleResult, UsernameResult } from "@/lib/types";
 import PhoneResultCard from "./PhoneResultCard";
 import EmailResultCard from "./EmailResultCard";
 import PeopleResultCard from "./PeopleResultCard";
+import UsernameResultCard from "./UsernameResultCard";
 
 const TABS: { kind: LookupKind; label: string; placeholder: string }[] = [
   { kind: "phone", label: "Phone", placeholder: "e.g. +1 202 555 0143" },
   { kind: "email", label: "Email", placeholder: "e.g. jane@example.com" },
   { kind: "name", label: "People", placeholder: "e.g. Jane Doe" },
+  { kind: "username", label: "Username", placeholder: "e.g. elonmusk" },
 ];
 
-type AnyResult = PhoneResult | EmailResult | PeopleResult;
+type AnyResult = PhoneResult | EmailResult | PeopleResult | UsernameResult;
 
 export default function SearchPanel({
   initialKind = "phone",
@@ -112,6 +114,7 @@ export default function SearchPanel({
             {kind === "phone" && <PhoneResultCard result={result as PhoneResult} />}
             {kind === "email" && <EmailResultCard result={result as EmailResult} />}
             {kind === "name" && <PeopleResultCard result={result as PeopleResult} />}
+            {kind === "username" && <UsernameResultCard result={result as UsernameResult} />}
             {(result as any).error && kind !== "name" && (
               <p className="mt-3 text-sm text-amber-600">{(result as any).error}</p>
             )}

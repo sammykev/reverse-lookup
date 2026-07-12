@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { lookupEmail } from "@/lib/providers/email";
 import { enrichPerson } from "@/lib/providers/enrich";
+import { lookupBreaches } from "@/lib/providers/breaches";
+import { discoverSocialAccounts } from "@/lib/providers/social-discovery";
 import { isValidEmailFormat } from "@/lib/validate";
 
 export const runtime = "nodejs";
@@ -15,9 +17,11 @@ export async function GET(req: Request) {
   if (!isValidEmailFormat(q)) {
     return NextResponse.json({ error: "That doesn't look like a valid email address." }, { status: 400 });
   }
-  const [validation, enrichment] = await Promise.all([
+  const [validation, enrichment, breaches, socialDiscovery] = await Promise.all([
     lookupEmail(q),
     enrichPerson({ email: q }),
+    lookupBreaches(q),
+    discoverSocialAccounts(q),
   ]);
-  return NextResponse.json({ ...validation, enrichment });
+  return NextResponse.json({ ...validation, enrichment, breaches, socialDiscovery });
 }

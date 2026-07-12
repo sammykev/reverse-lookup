@@ -1,4 +1,4 @@
-export type LookupKind = "phone" | "email" | "name";
+export type LookupKind = "phone" | "email" | "name" | "username";
 
 export interface SocialProfile {
   network: string;
@@ -51,6 +51,54 @@ export interface EmailResult {
   autocorrect: string | null;
   provider: string | null;
   enrichment?: EnrichResult | null;
+  breaches?: BreachResult | null;
+  socialDiscovery?: SocialDiscoveryResult | null;
+  error?: string;
+}
+
+// ── Breach lookup ────────────────────────────────────────────────────────────
+export interface Breach {
+  name: string;
+  title: string;
+  domain: string;
+  breachDate: string;
+  addedDate: string;
+  pwnCount: number;
+  dataClasses: string[];
+  description: string;
+  isVerified: boolean;
+  isSensitive: boolean;
+  logoPath: string | null;
+}
+
+export interface BreachResult {
+  query: string;
+  breaches: Breach[];
+  pasteCount: number | null;
+  configured: boolean;
+  provider: string;
+  error?: string;
+}
+
+// ── Social account discovery ─────────────────────────────────────────────────
+export interface SocialAccount {
+  platform: string;
+  url: string;
+  username: string;
+  found: boolean;
+}
+
+export interface SocialDiscoveryResult {
+  query: string;
+  accounts: SocialAccount[];
+  configured: boolean;
+  error?: string;
+}
+
+// ── Username search ──────────────────────────────────────────────────────────
+export interface UsernameResult {
+  query: string;
+  accounts: SocialAccount[];
   error?: string;
 }
 

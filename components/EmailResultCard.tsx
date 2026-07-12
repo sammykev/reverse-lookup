@@ -1,6 +1,8 @@
 import { EmailResult } from "@/lib/types";
 import { ResultRow, Badge } from "./ResultRow";
 import EnrichCard from "./EnrichCard";
+import BreachCard from "./BreachCard";
+import SocialDiscoveryCard from "./SocialDiscoveryCard";
 
 function deliverabilityBadge(value: EmailResult["deliverable"]) {
   if (!value) return <span className="text-slate-400">—</span>;
@@ -44,6 +46,8 @@ export default function EmailResultCard({ result }: { result: EmailResult }) {
         )}
       </div>
       {result.enrichment && <EnrichCard enrich={result.enrichment} />}
+      {result.breaches && <BreachCard result={result.breaches} />}
+      {result.socialDiscovery && <SocialDiscoveryCard result={result.socialDiscovery} />}
     </div>
   );
 }

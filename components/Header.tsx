@@ -15,6 +15,7 @@ export default function Header() {
           <Link href="/phone" className="hover:text-brand-600">Phone</Link>
           <Link href="/email" className="hover:text-brand-600">Email</Link>
           <Link href="/name" className="hover:text-brand-600">People</Link>
+          <Link href="/username" className="hover:text-brand-600">Username</Link>
         </nav>
       </div>
     </header>
